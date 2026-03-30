@@ -3,134 +3,100 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-# Pengaturan halaman
-st.set_page_config(page_title="WVI Topic Modeling Dashboard", layout="wide")
+# 1. Konfigurasi Halaman & Gaya (CSS)
+st.set_page_config(page_title="WVI Dashboard", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS untuk tampilan modern (mirip HTML referensi)
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    h1, h2, h3 { color: #2c3e50; }
+    .main { background-color: #fcfcfc; }
+    div[data-testid="stMetric"] {
+        background-color: #ffffff;
+        border: 1px solid #f0f2f6;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# 1. Load Data
+# 2. Fungsi Load Data
 @st.cache_data
 def load_data():
     df = pd.read_csv('Data_WVI_Dashboard_Final.csv')
     return df
 
-try:
-    df = load_data()
-except FileNotFoundError:
-    st.error("File 'Data_WVI_Dashboard_Final.csv' tidak ditemukan. Pastikan file berada di folder yang sama.")
-    st.stop()
+df = load_data()
 
-# 2. Sidebar Filters
-st.sidebar.title("Filter Data")
-wilayah_filter = st.sidebar.multiselect("Pilih Wilayah", options=df['Wilayah'].unique(), default=df['Wilayah'].unique())
-gender_filter = st.sidebar.multiselect("Pilih Jenis Kelamin", options=df['Jenis Kelamin'].unique(), default=df['Jenis Kelamin'].unique())
-umur_filter = st.sidebar.multiselect("Pilih Kelompok Umur", options=df['Umur'].unique(), default=df['Umur'].unique())
+# 3. Sidebar Filter
+st.sidebar.title("🔍 Filter Dashboard")
+wilayah_list = df['Wilayah'].unique().tolist()
+selected_wilayah = st.sidebar.multiselect("Pilih Wilayah", wilayah_list, default=wilayah_list)
 
-# Filter DataFrame
-df_filtered = df[
-    (df['Wilayah'].isin(wilayah_filter)) &
-    (df['Jenis Kelamin'].isin(gender_filter)) &
-    (df['Umur'].isin(umur_filter))
-]
+# Filter dataframe
+df_filt = df[df['Wilayah'].isin(selected_wilayah)]
 
-# 3. Header & KPI
+# 4. Header & KPI Cards
 st.title("📊 Dashboard Topic Modeling - WVI")
-st.markdown("Visualisasi hasil analisis topik dari tanggapan masyarakat terkait bencana banjir.")
+st.caption("Visualisasi hasil analisis topik dari tanggapan masyarakat terkait bencana banjir.")
 
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-
-with kpi1:
-    st.metric("Total Tanggapan", len(df_filtered))
-
-with kpi2:
-    top_topic = df_filtered['topic_category'].mode()[0] if not df_filtered.empty else "-"
-    st.metric("Topik Utama", f"T{df_filtered['topic_id'].mode()[0]}" if not df_filtered.empty else "-", help=top_topic)
-
-with kpi3:
-    if not df_filtered.empty:
-        fem_pct = (len(df_filtered[df_filtered['Jenis Kelamin'] == 'Perempuan']) / len(df_filtered)) * 100
-        st.metric("Responden Perempuan", f"{fem_pct:.1f}%")
-    else:
-        st.metric("Responden Perempuan", "0%")
-
-with kpi4:
-    if not df_filtered.empty:
-        top_age = df_filtered['Umur'].mode()[0]
-        st.metric("Kelompok Usia Dominan", top_age)
-    else:
-        st.metric("Kelompok Usia Dominan", "-")
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.metric("Total Tanggapan", f"{len(df_filt)} data")
+with col2:
+    top_topic = df_filt['topic_category'].mode()[0] if not df_filt.empty else "N/A"
+    st.metric("Topik Utama", f"T{df_filt['topic_id'].mode()[0]}" if not df_filt.empty else "-", help=top_topic)
+with col3:
+    fem_pct = (len(df_filt[df_filt['Jenis Kelamin']=='Perempuan'])/len(df_filt)*100) if not df_filt.empty else 0
+    st.metric("Responden Perempuan", f"{fem_pct:.1f}%")
+with col4:
+    age_top = df_filt['Umur'].mode()[0] if not df_filt.empty else "N/A"
+    st.metric("Kelompok Usia Terbanyak", age_top)
 
 st.markdown("---")
 
-# 4. Visualisasi Utama (Grid Layout)
-col_left, col_right = st.columns([3, 2])
+# 5. Visualisasi Utama
+c1, c2 = st.columns([3, 2])
 
-with col_left:
-    st.subheader("📍 Heatmap Topik per Wilayah")
-    # Pivot data untuk heatmap
-    hm_data = df_filtered.groupby(['Wilayah', 'topic_category']).size().reset_index(name='counts')
-    hm_pivot = hm_data.pivot(index='Wilayah', columns='topic_category', values='counts').fillna(0)
-    
-    fig_hm = px.imshow(
-        hm_pivot,
-        labels=dict(x="Topik", y="Wilayah", color="Jumlah"),
-        color_continuous_scale='YlOrBr', # Warna hangat sesuai referensi HTML
-        aspect="auto"
+with c1:
+    st.subheader("📍 Heatmap: Topik vs Wilayah")
+    hm_data = df_filt.groupby(['Wilayah', 'topic_category']).size().reset_index(name='Jumlah')
+    fig_hm = px.density_heatmap(
+        hm_data, x="topic_category", y="Wilayah", z="Jumlah",
+        color_continuous_scale="YlOrBr", text_auto=True,
+        labels={'topic_category': 'Kategori Topik'}
     )
-    fig_hm.update_layout(height=400)
+    fig_hm.update_layout(height=450)
     st.plotly_chart(fig_hm, use_container_width=True)
 
-with col_right:
+with c2:
     st.subheader("🍰 Distribusi Gender")
     fig_pie = px.pie(
-        df_filtered, 
-        names='Jenis Kelamin', 
-        hole=0.4,
-        color_discrete_sequence=px.colors.qualitative.Pastel
+        df_filt, names='Jenis Kelamin', hole=0.5,
+        color_discrete_sequence=['#EF9F27', '#FAC775']
     )
-    fig_pie.update_layout(showlegend=True, height=400)
+    fig_pie.update_layout(height=450, legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5))
     st.plotly_chart(fig_pie, use_container_width=True)
 
 st.markdown("---")
 
-col_bot1, col_bot2 = st.columns(2)
+# 6. Grafik Bar Bawah
+b1, b2 = st.columns(2)
 
-with col_bot1:
+with b1:
     st.subheader("📈 Frekuensi per Kategori Topik")
-    topic_counts = df_filtered['topic_category'].value_counts().reset_index()
-    topic_counts.columns = ['Topik', 'Jumlah']
-    fig_bar = px.bar(
-        topic_counts, 
-        x='Jumlah', 
-        y='Topik', 
-        orientation='h',
-        color='Jumlah',
-        color_continuous_scale='Viridis'
-    )
+    counts = df_filt['topic_category'].value_counts().reset_index()
+    counts.columns = ['Topik', 'Jumlah']
+    fig_bar = px.bar(counts, x='Jumlah', y='Topik', orientation='h', color='Jumlah', color_continuous_scale='Viridis')
     fig_bar.update_layout(yaxis={'categoryorder':'total ascending'}, height=400)
     st.plotly_chart(fig_bar, use_container_width=True)
 
-with col_bot2:
-    st.subheader("👥 Kelompok Usia Responden")
-    age_counts = df_filtered['Umur'].value_counts().reset_index()
-    age_counts.columns = ['Usia', 'Jumlah']
-    fig_age = px.bar(
-        age_counts, 
-        x='Usia', 
-        y='Jumlah',
-        color='Usia',
-        color_discrete_sequence=px.colors.qualitative.Safe
-    )
-    fig_age.update_layout(height=400)
+with b2:
+    st.subheader("👥 Kelompok Usia")
+    age_counts = df_filt['Umur'].value_counts().reset_index()
+    fig_age = px.bar(age_counts, x='Umur', y='count', color='Umur', color_discrete_sequence=px.colors.qualitative.Prism)
+    fig_age.update_layout(height=400, showlegend=False)
     st.plotly_chart(fig_age, use_container_width=True)
 
-# 5. Data Table (Opsional)
-with st.expander("Lihat Detail Data Mentah"):
-    st.dataframe(df_filtered[['Wilayah', 'Umur', 'Jenis Kelamin', 'topic_category', 'Tanggapan']], use_container_width=True)
+# 7. Detail Data
+with st.expander("📄 Lihat Detail Data Tanggapan"):
+    st.dataframe(df_filt[['Wilayah', 'Umur', 'Jenis Kelamin', 'topic_category', 'Tanggapan']], use_container_width=True)
